@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from sqlalchemy import Table
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -116,6 +116,15 @@ class MemoryIndex(Protocol):
         projections: tuple[MemoryProjection, ...],
         /,
     ) -> tuple[MemoryProjection, ...]: ...
+
+
+@runtime_checkable
+class NativeHybridMemoryIndex(Protocol):
+    """Optional single-statement candidate path for a backend with both native indexes."""
+
+    async def search_hybrid(
+        self, connection: AsyncConnection, scope_id: str, request: MemorySearchRequest, /
+    ) -> MemorySearchChannels: ...
 
 
 class NoMemoryIndex:
@@ -247,6 +256,10 @@ class CompositeMemoryIndex:
         request: MemorySearchRequest,
         /,
     ) -> MemorySearchChannels:
+        if request.mode == "hybrid":
+            for index in self.indexes:
+                if isinstance(index, NativeHybridMemoryIndex):
+                    return await index.search_hybrid(connection, scope_id, request)
         fts: tuple[MemoryChannelHit, ...] = ()
         vector: tuple[MemoryChannelHit, ...] = ()
         for index in self.indexes:
