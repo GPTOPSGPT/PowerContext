@@ -478,17 +478,6 @@ class TopicMemoryRepository:
         query_terms = tuple(sorted(set(analyzed.split())))
         if not analyzed and used_mode == "fts":
             return TopicMemorySearchResult(mode=used_mode, hits=())
-        request = TopicMemorySearchRequest(
-            query=query,
-            analyzed_query=" ".join(query_terms),
-            candidate_limit=min(MAX_TOPIC_MEMORY_CHANNEL_CANDIDATES, max(limit * 4, 32)),
-            mode=used_mode,
-            query_vector=query_vector,
-            embedding_profile=embedding_profile,
-            admission=admission,
-        )
-        channels = await self.index.search(connection, scope_id, request)
-        await self._check_retrieval_shape(connection)
         lifecycle = SOURCE_LIFECYCLE_NODES_TABLE
         inactive = set(
             (
@@ -501,14 +490,32 @@ class TopicMemoryRepository:
                 )
             ).all()
         )
-        fusion_limit = min(MAX_TOPIC_MEMORY_SEARCH_LIMIT, limit + len(inactive))
-        outcome = _fuse_topic_memory_rankings(query, channels, fusion_limit, mode=used_mode, admission=admission)
-        visible = tuple(
-            hit for hit in outcome.hits if (hit.artifact_ref.artifact_id, hit.artifact_ref.revision) not in inactive
-        )[:limit]
+        request = TopicMemorySearchRequest(
+            query=query,
+            analyzed_query=" ".join(query_terms),
+            candidate_limit=min(MAX_TOPIC_MEMORY_CHANNEL_CANDIDATES, max(limit * 4, 32) + len(inactive)),
+            mode=used_mode,
+            query_vector=query_vector,
+            embedding_profile=embedding_profile,
+            admission=admission,
+        )
+        channels = await self.index.search(connection, scope_id, request)
+        await self._check_retrieval_shape(connection)
+        if inactive:
+            channels = channels.model_copy(
+                update={
+                    name: tuple(
+                        hit
+                        for hit in getattr(channels, name)
+                        if (hit.artifact_ref.artifact_id, hit.artifact_ref.revision) not in inactive
+                    )
+                    for name in ("topic_fts", "topic_vector", "detail_fts", "detail_vector")
+                }
+            )
+        outcome = _fuse_topic_memory_rankings(query, channels, limit, mode=used_mode, admission=admission)
         return TopicMemorySearchResult(
             mode=used_mode,
-            hits=visible,
+            hits=outcome.hits,
             admission=AdmissionCounts(
                 family=TopicMemory.family,
                 scope_id=scope_id,
