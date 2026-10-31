@@ -17,7 +17,7 @@
 from __future__ import annotations
 
 import json
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, field_validator
 from sqlalchemy import insert, select, update
@@ -50,14 +50,14 @@ class SourceLifecycleEvent(BaseModel):
     @classmethod
     def nonblank(cls, value: str) -> str:
         if not value.strip():
-            raise ValueError("must be nonblank")
+            raise ValueError("must be nonblank")  # noqa: TRY003
         return value
 
     @field_validator("revision", "sequence")
     @classmethod
     def positive(cls, value: int) -> int:
         if value < 1:
-            raise ValueError("must be positive")
+            raise ValueError("must be positive")  # noqa: TRY003
         return value
 
 
@@ -88,16 +88,18 @@ class ScopedSourceLifecycle:
         self._database = database
         self.scope_id = scope_id
 
-    async def _nodes(self) -> dict[str, dict]:
+    async def _nodes(self) -> dict[str, dict[str, Any]]:
         async with self._database.transaction() as connection:
-            rows = (await connection.execute(
-                select(SOURCE_LIFECYCLE_NODES_TABLE).where(SOURCE_LIFECYCLE_NODES_TABLE.c.scope_id == self.scope_id)
-            )).mappings()
+            rows = (
+                await connection.execute(
+                    select(SOURCE_LIFECYCLE_NODES_TABLE).where(SOURCE_LIFECYCLE_NODES_TABLE.c.scope_id == self.scope_id)
+                )
+            ).mappings()
             return {str(row["node_id"]): dict(row) for row in rows}
 
     async def register_source(self, node_id: str, source_ref: SourceRef, *, revision: int) -> None:
         if type(revision) is not int or revision < 1:
-            raise SourceLifecycleError("source revision must be positive")
+            raise SourceLifecycleError("source revision must be positive")  # noqa: TRY003
         await self._runtime.records.for_scope(self.scope_id).get_source(source_ref.source_type, source_ref.source_id)
         await self._register(node_id, "source", source_ref.model_dump(mode="json"), (), None, True, revision)
 
@@ -109,9 +111,7 @@ class ScopedSourceLifecycle:
         parents: tuple[str, ...],
         policy: Literal["all", "any"],
     ) -> None:
-        await self._runtime.memory.for_scope(self.scope_id).get(
-            self._memory_get_request(citation)
-        )
+        await self._runtime.memory.for_scope(self.scope_id).get(self._memory_get_request(citation))
         await self._register(node_id, "memory", citation.model_dump(mode="json"), parents, policy, False, None)
 
     async def register_topic(
@@ -130,59 +130,79 @@ class ScopedSourceLifecycle:
     @staticmethod
     def _memory_get_request(citation: MemoryCitation):
         from powercontext.builtin.runtime.application import GetMemoryEntryRequest
+
         return GetMemoryEntryRequest(citation=citation)
 
     async def _register(
-        self, node_id: str, kind: str, reference: dict, parents: tuple[str, ...],
-        policy: str | None, source_available: bool, revision: int | None,
+        self,
+        node_id: str,
+        kind: str,
+        reference: dict[str, Any],
+        parents: tuple[str, ...],
+        policy: str | None,
+        source_available: bool,
+        revision: int | None,
     ) -> None:
         if not isinstance(node_id, str) or not node_id.strip():
-            raise SourceLifecycleError("node_id must be nonblank")
+            raise SourceLifecycleError("node_id must be nonblank")  # noqa: TRY003
         if kind != "source" and (policy not in {"all", "any"} or not parents):
-            raise SourceLifecycleError("derived nodes require parents and an all/any policy")
+            raise SourceLifecycleError("derived nodes require parents and an all/any policy")  # noqa: TRY003
         if len(parents) != len(set(parents)) or node_id in parents:
-            raise SourceLifecycleError("duplicate or cyclic parent")
+            raise SourceLifecycleError("duplicate or cyclic parent")  # noqa: TRY003
         nodes = await self._nodes()
         expected = (kind, _encode(reference), _encode(parents), policy, revision)
         current = nodes.get(node_id)
         if current is not None:
             actual = (current["kind"], current["reference"], current["parents"], current["policy"], current["revision"])
             if actual != expected:
-                raise SourceLifecycleError("node_id already has a different binding")
+                raise SourceLifecycleError("node_id already has a different binding")  # noqa: TRY003
             return
         if any(parent not in nodes for parent in parents):
-            raise SourceLifecycleError("parent is not registered")
-        available = source_available if kind == "source" else self._supported(policy, parents, {
-            key: bool(row["available"]) for key, row in nodes.items()
-        })
+            raise SourceLifecycleError("parent is not registered")  # noqa: TRY003
+        available = (
+            source_available
+            if kind == "source"
+            else self._supported(policy, parents, {key: bool(row["available"]) for key, row in nodes.items()})
+        )
         if kind == "memory" and not available:
             await self._set_memory_state(MemoryCitation.model_validate(reference), available)
         artifact_id = reference.get("artifact_id") if kind == "topic" else None
         artifact_revision = reference.get("revision") if kind == "topic" else None
         async with self._database.transaction() as connection:
-            await connection.execute(insert(SOURCE_LIFECYCLE_NODES_TABLE).values(
-                scope_id=self.scope_id, node_id=node_id, kind=kind, reference=_encode(reference),
-                parents=_encode(parents), policy=policy, available=available, revision=revision,
-                sequence=0, artifact_id=artifact_id, artifact_revision=artifact_revision,
-            ))
+            await connection.execute(
+                insert(SOURCE_LIFECYCLE_NODES_TABLE).values(
+                    scope_id=self.scope_id,
+                    node_id=node_id,
+                    kind=kind,
+                    reference=_encode(reference),
+                    parents=_encode(parents),
+                    policy=policy,
+                    available=available,
+                    revision=revision,
+                    sequence=0,
+                    artifact_id=artifact_id,
+                    artifact_revision=artifact_revision,
+                )
+            )
 
     @staticmethod
     def _supported(policy: str | None, parents: tuple[str, ...], states: dict[str, bool]) -> bool:
         support = [states[parent] for parent in parents]
         return all(support) if policy == "all" else any(support)
 
-    async def apply(self, event: SourceLifecycleEvent) -> list[str]:
+    async def apply(self, event: SourceLifecycleEvent) -> list[str]:  # noqa: C901 - lifecycle transition
         nodes = await self._nodes()
         source = nodes.get(event.node_id)
         if source is None or source["kind"] != "source" or source["revision"] != event.revision:
-            raise SourceLifecycleError("unknown Source or lifecycle revision")
+            raise SourceLifecycleError("unknown Source or lifecycle revision")  # noqa: TRY003
         previous = source["sequence"]
         encoded_event = _encode(event.model_dump(mode="json"))
         if event.sequence < previous or (event.sequence == previous and source["last_event"] != encoded_event):
-            raise SourceLifecycleError("Source event sequence conflicts")
+            raise SourceLifecycleError("Source event sequence conflicts")  # noqa: TRY003
         if event.sequence == previous:
             return sorted(key for key, row in nodes.items() if row["available"])
         states: dict[str, bool] = {event.node_id: event.available}
+
         def active(node_id: str) -> bool:
             if node_id in states:
                 return states[node_id]
@@ -190,9 +210,12 @@ class ScopedSourceLifecycle:
             if row["kind"] == "source":
                 states[node_id] = bool(row["available"])
             else:
-                parents = tuple(_decode(row["parents"]))
-                states[node_id] = self._supported(row["policy"], parents, {parent: active(parent) for parent in parents})
+                parents = tuple(cast(list[str], _decode(row["parents"])))
+                states[node_id] = self._supported(
+                    row["policy"], parents, {parent: active(parent) for parent in parents}
+                )
             return states[node_id]
+
         for node_id in nodes:
             active(node_id)
         for node_id, row in nodes.items():
@@ -201,21 +224,27 @@ class ScopedSourceLifecycle:
         async with self._database.transaction() as connection:
             table = SOURCE_LIFECYCLE_NODES_TABLE
             for node_id, available in states.items():
-                await connection.execute(update(table).where(
-                    table.c.scope_id == self.scope_id, table.c.node_id == node_id
-                ).values(available=available))
-            await connection.execute(update(table).where(
-                table.c.scope_id == self.scope_id, table.c.node_id == event.node_id
-            ).values(sequence=event.sequence, last_event=encoded_event))
+                await connection.execute(
+                    update(table)
+                    .where(table.c.scope_id == self.scope_id, table.c.node_id == node_id)
+                    .values(available=available)
+                )
+            await connection.execute(
+                update(table)
+                .where(table.c.scope_id == self.scope_id, table.c.node_id == event.node_id)
+                .values(sequence=event.sequence, last_event=encoded_event)
+            )
         return sorted(node_id for node_id, available in states.items() if available)
 
     async def _set_memory_state(self, citation: MemoryCitation, available: bool) -> None:
         async with self._runtime._context(self.scope_id) as context, self._runtime._locked(self.scope_id):
             service = context.artifacts.memory
             current = await service.head(context.artifacts.memory_artifact_id)
-            manifest = next((item for item in current.content.manifest.entries if item.entry_id == citation.entry_id), None)
+            manifest = next(
+                (item for item in current.content.manifest.entries if item.entry_id == citation.entry_id), None
+            )
             if manifest is None or manifest.entry_version_id != citation.entry_version_id:
-                raise SourceLifecycleError("registered Memory entry is no longer current")
+                raise SourceLifecycleError("registered Memory entry is no longer current")  # noqa: TRY003
             if (manifest.state == "active") == available:
                 return
             entry = next(item for item in await service.entries(current) if item.entry_id == citation.entry_id)
@@ -226,12 +255,14 @@ class ScopedSourceLifecycle:
 
     async def resolve(self, node_id: str, *, purpose: Literal["generation", "audit"]):
         if purpose not in {"generation", "audit"}:
-            raise SourceLifecycleError("unknown resolution purpose")
+            raise SourceLifecycleError("unknown resolution purpose")  # noqa: TRY003
         row = (await self._nodes()).get(node_id)
         if row is None or (purpose == "generation" and not row["available"]):
-            raise SourceLifecycleError("node is unavailable")
+            raise SourceLifecycleError("node is unavailable")  # noqa: TRY003
         payload = _decode(row["reference"])
-        return {"source": SourceRef, "memory": MemoryCitation, "topic": ArtifactRef}[row["kind"]].model_validate(payload)
+        return {"source": SourceRef, "memory": MemoryCitation, "topic": ArtifactRef}[row["kind"]].model_validate(
+            payload
+        )
 
 
 __all__ = ["SourceLifecycleApplication", "SourceLifecycleError", "SourceLifecycleEvent"]
