@@ -58,6 +58,7 @@ from powercontext.builtin.persistence.tables import (
     TOPIC_MEMORY_ACTIVE_TOPICS_TABLE,
     TOPIC_MEMORY_RETRIEVAL_SHAPE_TABLE,
     TOPIC_MEMORY_REVISION_PUBLICATIONS_TABLE,
+    SOURCE_LIFECYCLE_NODES_TABLE,
 )
 from powercontext.builtin.persistence.tags import tag_predicate
 from powercontext.builtin.persistence.topic_memory_index import (
@@ -488,10 +489,20 @@ class TopicMemoryRepository:
         )
         channels = await self.index.search(connection, scope_id, request)
         await self._check_retrieval_shape(connection)
-        outcome = _fuse_topic_memory_rankings(query, channels, limit, mode=used_mode, admission=admission)
+        lifecycle = SOURCE_LIFECYCLE_NODES_TABLE
+        inactive = set((await connection.execute(
+            select(lifecycle.c.artifact_id, lifecycle.c.artifact_revision).where(
+                lifecycle.c.scope_id == scope_id,
+                lifecycle.c.kind == "topic",
+                lifecycle.c.available.is_(False),
+            )
+        )).all())
+        fusion_limit = min(MAX_TOPIC_MEMORY_SEARCH_LIMIT, limit + len(inactive))
+        outcome = _fuse_topic_memory_rankings(query, channels, fusion_limit, mode=used_mode, admission=admission)
+        visible = tuple(hit for hit in outcome.hits if (hit.artifact_ref.artifact_id, hit.artifact_ref.revision) not in inactive)[:limit]
         return TopicMemorySearchResult(
             mode=used_mode,
-            hits=outcome.hits,
+            hits=visible,
             admission=AdmissionCounts(
                 family=TopicMemory.family,
                 scope_id=scope_id,

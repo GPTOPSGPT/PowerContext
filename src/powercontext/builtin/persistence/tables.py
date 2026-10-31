@@ -1015,6 +1015,25 @@ MEMORY_ENTRY_HEADS_TABLE = Table(
 
 MEMORY_TABLES = (MEMORY_ENTRY_VERSIONS_TABLE, MEMORY_ENTRY_HEADS_TABLE)
 
+SOURCE_LIFECYCLE_NODES_TABLE = Table(
+    "pc_source_lifecycle_nodes",
+    SHARED_METADATA,
+    Column("scope_id", identity_string(MAX_SCOPE_ID_LENGTH), primary_key=True),
+    Column("node_id", identity_string(128), primary_key=True),
+    Column("kind", String(16), nullable=False),
+    Column("reference", _canonical_payload_type(), nullable=False),
+    Column("parents", _canonical_payload_type(), nullable=False),
+    Column("policy", String(8)),
+    Column("available", Boolean, nullable=False),
+    Column("revision", Integer),
+    Column("sequence", Integer, nullable=False, default=0),
+    Column("last_event", _canonical_payload_type()),
+    Column("artifact_id", identity_string(MAX_ARTIFACT_ID_LENGTH)),
+    Column("artifact_revision", Integer),
+    ForeignKeyConstraint(("scope_id",), ("pc_scopes.scope_id",), ondelete="CASCADE"),
+    CheckConstraint("kind IN ('source', 'memory', 'topic')", name="ck_pc_lifecycle_kind"),
+)
+
 TOPIC_MEMORY_TABLES = (
     TOPIC_MEMORY_RETRIEVAL_SHAPE_TABLE,
     TOPIC_MEMORY_REVISION_PUBLICATIONS_TABLE,
@@ -1185,6 +1204,7 @@ BUILTIN_TABLES = (
     + SHARED_TABLES
     + TOPIC_MEMORY_TABLES
     + MEMORY_TABLES
+    + (SOURCE_LIFECYCLE_NODES_TABLE,)
     + STATISTICS_TABLES
     + RECURRENCE_TABLES
     + (ARTIFACT_TAGS_TABLE, DREAM_RUNS_TABLE, RECEIPT_MIGRATION_REVIEW_TABLE)
