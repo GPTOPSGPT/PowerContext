@@ -116,6 +116,22 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 )
 
 
+def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
+    requested_sections = []
+    if re.search(r"\b(?:income statements?|statements? of income|p\s*&\s*l)\b", question):
+        requested_sections.append(r"\b(?:consolidated\s+)?statements? of income\b")
+    if re.search(r"\b(?:cash flows?|statements? of cash flows?)\b", question):
+        requested_sections.append(r"\b(?:consolidated\s+)?statements? of cash flows?\b")
+    anchors = []
+    for heading in requested_sections[:limit]:
+        matching = [
+            index for index, record in enumerate(entries) if re.search(heading, record.entry.text[:240].lower())
+        ]
+        if matching:
+            anchors.append(max(matching, key=score))
+    return anchors
+
+
 async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[MemoryCitation, ...]:
     if limit <= 0:
         return ()
@@ -197,5 +213,11 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
             value += 0.25 / (1 + lexical[identity])
         return value
 
-    ranked = sorted(range(total), key=lambda index: (-score(index), index))[:limit]
+    ranked = sorted(range(total), key=lambda index: (-score(index), index))
+    # Long financial questions often name several statements. Keep a page
+    # headed by each requested statement in the result, even when incidental
+    # words in the question outweigh its title in a whole-page BM25 score.
+    selected = list(dict.fromkeys(_section_anchors(entries, normalized, limit, score)))
+    selected.extend(index for index in ranked if index not in selected)
+    ranked = selected[:limit]
     return tuple(entries[index].citation for index in ranked)
