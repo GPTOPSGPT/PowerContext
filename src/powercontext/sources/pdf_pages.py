@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import re
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -152,23 +154,57 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "fy2022",
         "fy2021",
     }
-    distinctive = [term for term in dict.fromkeys(terms) if len(term) > 3 and term not in stop]
-    queries = [question, " ".join(distinctive[:8]), *distinctive[:6]]
-    citations: list[MemoryCitation] = []
-    seen: set[tuple[str, str]] = set()
+    distinctive = [
+        term
+        for term in dict.fromkeys(terms)
+        if len(term) > 3 and term not in stop and not (term.isdigit() and len(term) == 4)
+    ]
+    normalized_question = question.lower()
+    finance_terms = []
+    for pattern, expanded in (
+        (r"\bcapex\b", ("capital", "expenditures")),
+        (r"\bd\s*&\s*a\b", ("depreciation", "amortization")),
+        (r"\bp\s*&\s*l\b", ("income", "statement")),
+        (r"\bebitda\b", ("operating", "income", "depreciation", "amortization")),
+    ):
+        if re.search(pattern, normalized_question):
+            finance_terms.extend(expanded)
+    # A long natural-language query can miss a page that covers only one of its
+    # concepts. Search a few short, overlapping concept groups as well. Unlike
+    # single-word searches, these require at least two matching terms in Memory.
+    starts = (0, len(distinctive) // 2, max(0, len(distinctive) - 5))
+    queries = [question, *(" ".join(distinctive[start : start + 5]) for start in starts)]
+    if finance_terms:
+        queries.append(" ".join(dict.fromkeys(finance_terms)))
+    candidates = {}
     for query in dict.fromkeys(query for query in queries if query.strip()):
-        page = await memory.search(SearchMemoryRequest(query=query, mode="fts", limit=max(limit, 20)))
-        for hit in page.hits:
+        page = await memory.search(SearchMemoryRequest(query=query, mode="fts", limit=max(limit * 3, 60)))
+        for rank, hit in enumerate(page.hits):
             key = (hit.entry_id, hit.entry_version_id)
-            if key not in seen:
-                seen.add(key)
-                citations.append(
-                    MemoryCitation(
-                        memory_ref=hit.memory_ref,
-                        entry_id=hit.entry_id,
-                        entry_version_id=hit.entry_version_id,
-                    )
-                )
-                if len(citations) == limit:
-                    return tuple(citations)
-    return tuple(citations)
+            if key not in candidates:
+                candidates[key] = (hit, 0.0)
+            original, score = candidates[key]
+            candidates[key] = (original, score + 1.0 / (60 + rank))
+
+    if not candidates:
+        return ()
+    query_terms = set(distinctive) | set(finance_terms)
+    page_terms = {key: set(re.findall(r"[a-z]+|\d+", hit.text.lower())) for key, (hit, _) in candidates.items()}
+    document_frequency = Counter(term for terms_on_page in page_terms.values() for term in terms_on_page & query_terms)
+    weights = {term: math.log((len(candidates) + 1) / (document_frequency[term] + 1)) + 1 for term in query_terms}
+    total_weight = sum(weights.values()) or 1.0
+    ranked = sorted(
+        candidates,
+        key=lambda key: (
+            -sum(weights[term] for term in page_terms[key] & query_terms) / total_weight - candidates[key][1],
+            key,
+        ),
+    )[:limit]
+    return tuple(
+        MemoryCitation(
+            memory_ref=candidates[key][0].memory_ref,
+            entry_id=candidates[key][0].entry_id,
+            entry_version_id=candidates[key][0].entry_version_id,
+        )
+        for key in ranked
+    )
