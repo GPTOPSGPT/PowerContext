@@ -89,6 +89,7 @@ from powercontext.builtin.artifacts.memory.protocols import (
     MemoryCandidateRequest,
     MemoryCommit,
     MemoryProjection,
+    MemorySearchChannels,
     MemorySearchRequest,
     MemoryWriteAssessment,
     MemoryWriteGate,
@@ -756,7 +757,7 @@ class MemoryService:
             embedding_profile=profile,
             tag_filter=tag_filter,
         )
-        channels = await self._backend.search(request)
+        channels = await self._search_channels(request, mode)
         admitted_fts = admit_fts_candidates(normalized_query, channels.fts, admission=admission)
         admitted_vector = admit_vector_candidates(channels.vector, admission=admission)
         hits = fuse_rankings(
@@ -778,6 +779,22 @@ class MemoryService:
             embedding_calls=embedding_calls,
             query_embedding=resolved_embedding,
         )
+
+    async def _search_channels(
+        self, request: MemorySearchRequest, requested_mode: MemorySearchMode
+    ) -> MemorySearchChannels:
+        try:
+            return await self._backend.search(request)
+        except CapabilityNotSupportedError as error:
+            # The deferred built-in completeness check reports "vector". Match
+            # the explicit hybrid error that the service used to report first.
+            if (
+                requested_mode == "hybrid"
+                and error.capability == "vector"
+                and getattr(self._backend, "validates_vector_complete_in_search", False)
+            ):
+                raise CapabilityNotSupportedError("hybrid") from error
+            raise
 
     async def _resolve_query_vector(
         self,
@@ -948,12 +965,17 @@ class MemoryService:
         embedding_profile = None if self._embedding_model is None else self._embedding_model.profile
         profile = capabilities.embedding_profile
         profile_matches = profile is not None and embedding_profile == profile
-        vector_complete = (
-            await self._backend.vector_complete(memories, profile)
-            if capabilities.vector and profile_matches and profile is not None
-            else False
+        # Built-in relational indexes validate completeness again inside their
+        # search transaction. Explicit modes can defer this check to that path;
+        # auto still needs it here to decide whether to fall back to FTS.
+        check_completeness = requested == "auto" or not getattr(
+            self._backend, "validates_vector_complete_in_search", False
         )
-        vector_available = capabilities.vector and profile_matches and vector_complete
+        vector_available = (
+            capabilities.vector
+            and profile_matches
+            and (not check_completeness or await self._backend.vector_complete(memories, profile))
+        )
         hybrid_available = capabilities.hybrid and vector_available
 
         if requested == "vector":

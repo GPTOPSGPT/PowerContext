@@ -117,6 +117,22 @@ class _MemoryProjectionRebuildError(MemoryBackendConfigurationError):
 class RelationalMemoryBackend:
     """Use shared Artifact revisions plus Memory-owned entry projections."""
 
+    @property
+    def validates_vector_complete_in_search(self) -> bool:
+        """Only known built-in vector indexes recheck completeness in search."""
+        if type(self) is not RelationalMemoryBackend:
+            return False
+        from powercontext.builtin.persistence.memory_index import CompositeMemoryIndex
+        from powercontext.builtin.persistence.oceanbase.memory_index import OceanBaseMemoryVectorIndex
+        from powercontext.builtin.persistence.sqlite.memory_index import SQLiteMemoryVectorIndex
+
+        indexes = self._index.indexes if isinstance(self._index, CompositeMemoryIndex) else (self._index,)
+        vector_indexes = tuple(index for index in indexes if index.capabilities.vector)
+        return len(vector_indexes) == 1 and type(vector_indexes[0]) in (
+            OceanBaseMemoryVectorIndex,
+            SQLiteMemoryVectorIndex,
+        )
+
     def __init__(
         self,
         *,
