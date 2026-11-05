@@ -119,13 +119,15 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
     requested_sections = []
     if re.search(r"\b(?:income statements?|statements? of income|p\s*&\s*l)\b", question):
-        requested_sections.append(r"\b(?:consolidated\s+)?statements? of income\b")
+        requested_sections.append((r"\b(?:consolidated\s+)?statements? of income\b", 240))
     if re.search(r"\b(?:cash flows?|statements? of cash flows?)\b", question):
-        requested_sections.append(r"\b(?:consolidated\s+)?statements? of cash flows?\b")
+        requested_sections.append((r"\b(?:consolidated\s+)?statements? of cash flows?\b", 240))
+    if re.search(r"\b(?:legal (?:battles?|proceedings?|disputes?|matters?)|litigation|lawsuits?)\b", question):
+        requested_sections.append((r"\blegal proceedings\b", None))
     anchors = []
-    for heading in requested_sections[:limit]:
+    for heading, window in requested_sections[:limit]:
         matching = [
-            index for index, record in enumerate(entries) if re.search(heading, record.entry.text[:240].lower())
+            index for index, record in enumerate(entries) if re.search(heading, record.entry.text[:window].lower())
         ]
         if matching:
             anchors.append(max(matching, key=score))
