@@ -203,7 +203,9 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "capex": ("capital", "expenditures"),
         "ebitda": ("operating", "income", "depreciation", "amortization"),
         "geographies": ("geographic", "segments", "regions"),
+        "revenue": ("sales",),
         "restructuring": ("restructuring", "charges"),
+        "sales": ("revenue",),
     }
     query_terms = list(dict.fromkeys(term for word in distinctive for term in (word, *aliases.get(word, ()))))
     normalized = question.lower()
