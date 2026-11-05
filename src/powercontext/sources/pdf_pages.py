@@ -173,7 +173,12 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "fy2022",
         "fy2021",
     }
-    distinctive = [term for term in dict.fromkeys(terms) if len(term) > 3 and term not in stop and not term.isdigit()]
+    short_financial_terms = {"eps", "net", "tax", "roe", "roa", "ppe"}
+    distinctive = [
+        term
+        for term in dict.fromkeys(terms)
+        if (len(term) > 3 or term in short_financial_terms) and term not in stop and not term.isdigit()
+    ]
     aliases = {
         "capex": ("capital", "expenditures"),
         "ebitda": ("operating", "income", "depreciation", "amortization"),
