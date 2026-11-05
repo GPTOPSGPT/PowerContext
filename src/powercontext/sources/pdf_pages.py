@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import io
+import math
 import re
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
@@ -117,8 +119,9 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[MemoryCitation, ...]:
     if limit <= 0:
         return ()
-    # FTS is scoped by the caller's Memory handle. Try the full question and its
-    # content words to recover pages whose text does not repeat the question verbatim.
+    # The scoped Memory's public list API contains the complete, citable page
+    # collection. Rank that collection so FTS admission cannot discard an
+    # evidence page that uses different wording from a long question.
     terms = re.findall(r"[a-z]+|\d+", question.lower())
     stop = {
         "what",
@@ -152,23 +155,47 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "fy2022",
         "fy2021",
     }
-    distinctive = [term for term in dict.fromkeys(terms) if len(term) > 3 and term not in stop]
-    queries = [question, " ".join(distinctive[:8]), *distinctive[:6]]
-    citations: list[MemoryCitation] = []
-    seen: set[tuple[str, str]] = set()
-    for query in dict.fromkeys(query for query in queries if query.strip()):
-        page = await memory.search(SearchMemoryRequest(query=query, mode="fts", limit=max(limit, 20)))
-        for hit in page.hits:
-            key = (hit.entry_id, hit.entry_version_id)
-            if key not in seen:
-                seen.add(key)
-                citations.append(
-                    MemoryCitation(
-                        memory_ref=hit.memory_ref,
-                        entry_id=hit.entry_id,
-                        entry_version_id=hit.entry_version_id,
-                    )
-                )
-                if len(citations) == limit:
-                    return tuple(citations)
-    return tuple(citations)
+    distinctive = [term for term in dict.fromkeys(terms) if len(term) > 3 and term not in stop and not term.isdigit()]
+    aliases = {
+        "capex": ("capital", "expenditures"),
+        "ebitda": ("operating", "income", "depreciation", "amortization"),
+        "geographies": ("geographic", "segments", "regions"),
+        "restructuring": ("restructuring", "charges"),
+    }
+    query_terms = list(dict.fromkeys(term for word in distinctive for term in (word, *aliases.get(word, ()))))
+    normalized = question.lower()
+    if re.search(r"\bd\s*&\s*a\b", normalized):
+        query_terms.extend(("depreciation", "amortization"))
+    if re.search(r"\bp\s*&\s*l\b", normalized):
+        query_terms.extend(("income", "statement"))
+    query_terms = list(dict.fromkeys(query_terms))
+
+    # Use search as a lexical channel, then rank every persisted page using
+    # the public Memory API. Entries returned by list carry exact citations.
+    searched = await memory.search(SearchMemoryRequest(query=question, mode="fts", limit=max(limit, 40)))
+    lexical = {(hit.entry_id, hit.entry_version_id): rank for rank, hit in enumerate(searched.hits)}
+    listed = await memory.list()
+    entries = [record for record in listed.entries if record.entry.text.strip()]
+    if not entries:
+        return ()
+    tokenized = [Counter(re.findall(r"[a-z]+|\d+", record.entry.text.lower())) for record in entries]
+    frequency = Counter(term for counts in tokenized for term in query_terms if term in counts)
+    total = len(entries)
+    average_length = sum(sum(counts.values()) for counts in tokenized) / total
+
+    def score(index: int) -> float:
+        counts = tokenized[index]
+        length = sum(counts.values())
+        value = 0.0
+        for term in query_terms:
+            occurrences = counts[term]
+            if occurrences:
+                idf = math.log1p((total - frequency[term] + 0.5) / (frequency[term] + 0.5))
+                value += idf * occurrences * 2.2 / (occurrences + 1.2 * (0.25 + 0.75 * length / average_length))
+        identity = (entries[index].entry.entry_id, entries[index].entry.entry_version_id)
+        if identity in lexical:
+            value += 0.25 / (1 + lexical[identity])
+        return value
+
+    ranked = sorted(range(total), key=lambda index: (-score(index), index))[:limit]
+    return tuple(entries[index].citation for index in ranked)
