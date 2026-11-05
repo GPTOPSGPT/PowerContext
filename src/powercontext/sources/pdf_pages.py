@@ -153,22 +153,26 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "fy2021",
     }
     distinctive = [term for term in dict.fromkeys(terms) if len(term) > 3 and term not in stop]
-    queries = [question, " ".join(distinctive[:8]), *distinctive[:6]]
-    citations: list[MemoryCitation] = []
-    seen: set[tuple[str, str]] = set()
-    for query in dict.fromkeys(query for query in queries if query.strip()):
-        page = await memory.search(SearchMemoryRequest(query=query, mode="fts", limit=max(limit, 20)))
-        for hit in page.hits:
+    # Collect candidates across the whole question and its distinct concepts.
+    # Returning as soon as the first query fills the limit hides pages that use
+    # only one of the financial terms in a multi-part question.
+    queries = list(
+        dict.fromkeys(query for query in [question, " ".join(distinctive[:8]), *distinctive[:8]] if query.strip())
+    )
+    candidates: dict[tuple[str, str], tuple[MemoryCitation, float]] = {}
+    for query_index, query in enumerate(queries):
+        page = await memory.search(SearchMemoryRequest(query=query, mode="fts", limit=max(limit * 2, 40)))
+        for rank, hit in enumerate(page.hits):
             key = (hit.entry_id, hit.entry_version_id)
-            if key not in seen:
-                seen.add(key)
-                citations.append(
-                    MemoryCitation(
-                        memory_ref=hit.memory_ref,
-                        entry_id=hit.entry_id,
-                        entry_version_id=hit.entry_version_id,
-                    )
-                )
-                if len(citations) == limit:
-                    return tuple(citations)
-    return tuple(citations)
+            citation = MemoryCitation(
+                memory_ref=hit.memory_ref,
+                entry_id=hit.entry_id,
+                entry_version_id=hit.entry_version_id,
+            )
+            previous = candidates.get(key)
+            # Reciprocal-rank fusion rewards pages found by several independent
+            # concepts; the full question has extra weight for precision.
+            score = (2.0 if query_index == 0 else 1.0) / (20 + rank)
+            candidates[key] = (citation, (previous[1] if previous else 0.0) + score)
+    ranked = sorted(candidates.values(), key=lambda item: item[1], reverse=True)
+    return tuple(citation for citation, _ in ranked[:limit])
