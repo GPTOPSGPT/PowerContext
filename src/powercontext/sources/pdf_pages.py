@@ -116,6 +116,26 @@ PDF_PAGE_SOURCE_DEFINITION = AdapterSourceDefinition(
 )
 
 
+def _stem_token(token: str) -> str:
+    """Normalize common English inflections for a second lexical ranking channel."""
+    if len(token) > 5 and token.endswith("ies"):
+        return token[:-3] + "y"
+    if len(token) > 5 and token.endswith("ing"):
+        return token[:-3]
+    if len(token) > 4 and token.endswith(("ed", "es")):
+        return token[:-2]
+    if len(token) > 4 and token.endswith("s") and not token.endswith(("ss", "is")):
+        return token[:-1]
+    return token
+
+
+def _stem_counts(counts: Counter[str]) -> Counter[str]:
+    stemmed: Counter[str] = Counter()
+    for term, count in counts.items():
+        stemmed[_stem_token(term)] += count
+    return stemmed
+
+
 def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
     requested_sections = []
     if re.search(r"\b(?:income statements?|statements? of income|p\s*&\s*l)\b", question):
@@ -203,24 +223,43 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         return ()
     tokenized = [Counter(re.findall(r"[a-z]+|\d+", record.entry.text.lower())) for record in entries]
     frequency = Counter(term for counts in tokenized for term in query_terms if term in counts)
+    stemmed_terms = list(dict.fromkeys(map(_stem_token, query_terms)))
+    stemmed_pages = [_stem_counts(counts) for counts in tokenized]
+    stemmed_frequency = Counter(term for counts in stemmed_pages for term in stemmed_terms if term in counts)
     total = len(entries)
     average_length = sum(sum(counts.values()) for counts in tokenized) / total
 
-    def score(index: int) -> float:
-        counts = tokenized[index]
+    def bm25(counts, terms, document_frequency) -> float:
         length = sum(counts.values())
         value = 0.0
-        for term in query_terms:
+        for term in terms:
             occurrences = counts[term]
             if occurrences:
-                idf = math.log1p((total - frequency[term] + 0.5) / (frequency[term] + 0.5))
+                idf = math.log1p((total - document_frequency[term] + 0.5) / (document_frequency[term] + 0.5))
                 value += idf * occurrences * 2.2 / (occurrences + 1.2 * (0.25 + 0.75 * length / average_length))
+        return value
+
+    def score(index: int) -> float:
+        value = bm25(tokenized[index], query_terms, frequency)
         identity = (entries[index].entry.entry_id, entries[index].entry.entry_version_id)
         if identity in lexical:
             value += 0.25 / (1 + lexical[identity])
         return value
 
-    ranked = sorted(range(total), key=lambda index: (-score(index), index))
+    raw_ranked = sorted(range(total), key=lambda index: (-score(index), index))
+    stemmed_ranked = sorted(
+        range(total),
+        key=lambda index: (-bm25(stemmed_pages[index], stemmed_terms, stemmed_frequency), index),
+    )
+    raw_positions = {index: rank for rank, index in enumerate(raw_ranked, start=1)}
+    stemmed_positions = {index: rank for rank, index in enumerate(stemmed_ranked, start=1)}
+    ranked = sorted(
+        range(total),
+        key=lambda index: (
+            -(1 / (60 + raw_positions[index]) + 1.5 / (60 + stemmed_positions[index])),
+            index,
+        ),
+    )
     # Long financial questions often name several statements. Keep a page
     # headed by each requested statement in the result, even when incidental
     # words in the question outweigh its title in a whole-page BM25 score.
