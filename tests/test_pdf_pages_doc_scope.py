@@ -67,3 +67,34 @@ def test_financial_metric_routes_to_statement_without_word_overlap() -> None:
 
     result = asyncio.run(search_pdf_pages(Memory(), "What was the quick ratio?", limit=5))
     assert result[0].entry_id == "page-30"
+
+
+def test_operations_heading_is_an_income_statement_anchor() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="operations", revision=1)
+
+    def record(number: int, text: str) -> SimpleNamespace:
+        citation = MemoryCitation(memory_ref=memory_ref, entry_id=f"page-{number}", entry_version_id=f"v-{number}")
+        return SimpleNamespace(
+            entry=SimpleNamespace(
+                text=f"report_2022_10k\n{text}", entry_id=citation.entry_id, entry_version_id=citation.entry_version_id
+            ),
+            citation=citation,
+        )
+
+    entries = (
+        *(
+            record(number, "The operating margin discussion includes details of business segments.")
+            for number in range(30)
+        ),
+        record(30, "Consolidated Statements of Operations\nNet revenue and cost of sales."),
+    )
+
+    class Memory:
+        async def search(self, request):
+            return SimpleNamespace(hits=())
+
+        async def list(self):
+            return SimpleNamespace(entries=entries)
+
+    result = asyncio.run(search_pdf_pages(Memory(), "Calculate the operating margin from the report", limit=5))
+    assert result[0].entry_id == "page-30"

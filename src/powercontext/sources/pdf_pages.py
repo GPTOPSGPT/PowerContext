@@ -140,10 +140,13 @@ def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
     requested_sections = []
     if re.search(
         r"\b(?:income statements?|statements? of income|p\s*&\s*l|"
-        r"revenue|sales|gross margin|operating income|net income|ebitda|earnings per share)\b",
+        r"revenue|sales|gross margin|operating margin|operating income|net income|ebitda|earnings per share)\b",
         question,
     ):
-        requested_sections.append((r"\b(?:consolidated\s+)?statements? of income\b", 240))
+        requested_sections.append((
+            r"\b(?:consolidated\s+)?(?:statements? of (?:income|operations|earnings)|income statements?)\b",
+            240,
+        ))
     if re.search(
         r"\b(?:cash flows?|statements? of cash flows?|capex|capital expenditures|"
         r"depreciation|amortization|free cash flow)\b",
@@ -155,7 +158,10 @@ def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
         r"current assets?|current liabilities|total assets?|total liabilities|shareholders? equity)\b",
         question,
     ):
-        requested_sections.append((r"\b(?:consolidated\s+)?balance sheets?\b", 240))
+        requested_sections.append((
+            r"\b(?:consolidated\s+)?(?:balance sheets?|statements? of financial position)\b",
+            240,
+        ))
     if re.search(r"\b(?:legal (?:battles?|proceedings?|disputes?|matters?)|litigation|lawsuits?)\b", question):
         requested_sections.append((r"\blegal proceedings\b", None))
     anchors = []
@@ -226,6 +232,18 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         "give",
         "answer",
         "question",
+        "respond",
+        "assuming",
+        "perspective",
+        "analyst",
+        "details",
+        "shown",
+        "within",
+        "only",
+        "calculate",
+        "provide",
+        "explain",
+        "according",
         "fy2022",
         "fy2021",
     }
