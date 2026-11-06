@@ -98,3 +98,32 @@ def test_operations_heading_is_an_income_statement_anchor() -> None:
 
     result = asyncio.run(search_pdf_pages(Memory(), "Calculate the operating margin from the report", limit=5))
     assert result[0].entry_id == "page-30"
+
+
+def test_multiple_financial_statement_pages_survive_distractors() -> None:
+    memory_ref = ArtifactRef(family="memory", artifact_id="multi-page", revision=1)
+
+    def record(number: int, text: str) -> SimpleNamespace:
+        citation = MemoryCitation(memory_ref=memory_ref, entry_id=f"page-{number}", entry_version_id=f"v-{number}")
+        return SimpleNamespace(
+            entry=SimpleNamespace(
+                text=f"report_2022_10k\n{text}", entry_id=citation.entry_id, entry_version_id=citation.entry_version_id
+            ),
+            citation=citation,
+        )
+
+    entries = (
+        *(record(number, "Operating margin discussed in the business overview.") for number in range(30)),
+        record(30, "Consolidated Statements of Operations\nRevenue 2022 100 2021 90\nCost 2022 60 2021 55"),
+        record(31, "Consolidated Statements of Operations\nIncome 2022 40 2021 35\nTax 2022 10 2021 8"),
+    )
+
+    class Memory:
+        async def search(self, request):
+            return SimpleNamespace(hits=())
+
+        async def list(self):
+            return SimpleNamespace(entries=entries)
+
+    result = asyncio.run(search_pdf_pages(Memory(), "What was the operating margin?", limit=5))
+    assert {"page-30", "page-31"} <= {citation.entry_id for citation in result}

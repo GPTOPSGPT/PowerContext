@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import itertools
 import math
 import re
 from collections import Counter
@@ -136,7 +137,7 @@ def _stem_counts(counts: Counter[str]) -> Counter[str]:
     return stemmed
 
 
-def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
+def _requested_sections(question: str) -> list[tuple[str, int | None]]:
     requested_sections = []
     if re.search(
         r"\b(?:income statements?|statements? of income|p\s*&\s*l|"
@@ -164,6 +165,10 @@ def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
         ))
     if re.search(r"\b(?:legal (?:battles?|proceedings?|disputes?|matters?)|litigation|lawsuits?)\b", question):
         requested_sections.append((r"\blegal proceedings\b", None))
+    return requested_sections
+
+
+def _section_anchors(entries, requested_sections, limit: int, score) -> list[int]:
     anchors = []
     for heading, window in requested_sections[:limit]:
         matching = [
@@ -172,6 +177,33 @@ def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
         if matching:
             anchors.append(max(matching, key=score))
     return anchors
+
+
+def _page_bonuses(entries, tokenized, terms, distinctive, requested_sections) -> list[float]:
+    salient = set(distinctive)
+    query_phrases = tuple(
+        f" {left} {right} " for left, right in itertools.pairwise(terms) if left in salient and right in salient
+    )
+    bonuses = []
+    for index, record in enumerate(entries):
+        page_words = " " + " ".join(re.findall(r"[a-z]+|\d+", record.entry.text.lower())) + " "
+        phrase_bonus = 2.0 * sum(phrase in page_words for phrase in query_phrases)
+        heading_bonus = 0.0
+        for heading, window in requested_sections:
+            if re.search(heading, record.entry.text[:window].lower()):
+                weight = 12.0
+                if window is not None:
+                    counts = tokenized[index]
+                    length = sum(counts.values())
+                    if (
+                        length <= 500
+                        and length
+                        and sum(count for word, count in counts.items() if word.isdigit()) / length >= 0.12
+                    ):
+                        weight += 8.0
+                heading_bonus = max(heading_bonus, weight)
+        bonuses.append(phrase_bonus + heading_bonus)
+    return bonuses
 
 
 def _scope_document_pages(entries, question: str):
@@ -285,6 +317,8 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     stemmed_frequency = Counter(term for counts in stemmed_pages for term in stemmed_terms if term in counts)
     total = len(entries)
     average_length = sum(sum(counts.values()) for counts in tokenized) / total
+    requested_sections = _requested_sections(normalized)
+    bonuses = _page_bonuses(entries, tokenized, terms, distinctive, requested_sections)
 
     def bm25(counts, terms, document_frequency) -> float:
         length = sum(counts.values())
@@ -297,7 +331,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
         return value
 
     def score(index: int) -> float:
-        value = bm25(tokenized[index], query_terms, frequency)
+        value = bm25(tokenized[index], query_terms, frequency) + bonuses[index]
         identity = (entries[index].entry.entry_id, entries[index].entry.entry_version_id)
         if identity in lexical:
             value += 0.25 / (1 + lexical[identity])
@@ -306,7 +340,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     raw_ranked = sorted(range(total), key=lambda index: (-score(index), index))
     stemmed_ranked = sorted(
         range(total),
-        key=lambda index: (-bm25(stemmed_pages[index], stemmed_terms, stemmed_frequency), index),
+        key=lambda index: (-bm25(stemmed_pages[index], stemmed_terms, stemmed_frequency) - bonuses[index], index),
     )
     raw_positions = {index: rank for rank, index in enumerate(raw_ranked, start=1)}
     stemmed_positions = {index: rank for rank, index in enumerate(stemmed_ranked, start=1)}
@@ -320,7 +354,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     # Long financial questions often name several statements. Keep a page
     # headed by each requested statement in the result, even when incidental
     # words in the question outweigh its title in a whole-page BM25 score.
-    selected = list(dict.fromkeys(_section_anchors(entries, normalized, limit, score)))
+    selected = list(dict.fromkeys(_section_anchors(entries, requested_sections, limit, score)))
     selected.extend(index for index in ranked if index not in selected)
     ranked = selected[:limit]
     return tuple(entries[index].citation for index in ranked)
