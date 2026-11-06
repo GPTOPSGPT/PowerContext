@@ -138,10 +138,24 @@ def _stem_counts(counts: Counter[str]) -> Counter[str]:
 
 def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
     requested_sections = []
-    if re.search(r"\b(?:income statements?|statements? of income|p\s*&\s*l)\b", question):
+    if re.search(
+        r"\b(?:income statements?|statements? of income|p\s*&\s*l|"
+        r"revenue|sales|gross margin|operating income|net income|ebitda|earnings per share)\b",
+        question,
+    ):
         requested_sections.append((r"\b(?:consolidated\s+)?statements? of income\b", 240))
-    if re.search(r"\b(?:cash flows?|statements? of cash flows?)\b", question):
+    if re.search(
+        r"\b(?:cash flows?|statements? of cash flows?|capex|capital expenditures|"
+        r"depreciation|amortization|free cash flow)\b",
+        question,
+    ):
         requested_sections.append((r"\b(?:consolidated\s+)?statements? of cash flows?\b", 240))
+    if re.search(
+        r"\b(?:balance sheets?|statements? of financial position|quick ratio|current ratio|"
+        r"current assets?|current liabilities|total assets?|total liabilities|shareholders? equity)\b",
+        question,
+    ):
+        requested_sections.append((r"\b(?:consolidated\s+)?balance sheets?\b", 240))
     if re.search(r"\b(?:legal (?:battles?|proceedings?|disputes?|matters?)|litigation|lawsuits?)\b", question):
         requested_sections.append((r"\blegal proceedings\b", None))
     anchors = []
@@ -152,6 +166,28 @@ def _section_anchors(entries, question: str, limit: int, score) -> list[int]:
         if matching:
             anchors.append(max(matching, key=score))
     return anchors
+
+
+def _scope_document_pages(entries, question: str):
+    """Narrow a mixed collection only when the question names one document."""
+    documents: dict[str, list] = {}
+    for record in entries:
+        document_id = record.entry.text.partition("\n")[0].strip()
+        documents.setdefault(document_id, []).append(record)
+    if len(documents) < 2:
+        return entries
+
+    compact_question = re.sub(r"[^a-z0-9]", "", question.lower())
+    matches = []
+    for document_id in documents:
+        # Financial report IDs commonly end with a year and filing type. Use
+        # only the issuer prefix learned from the stored page, never a list of
+        # expected issuers or evaluation documents.
+        issuer = re.split(r"(?<!\d)(?:19|20)\d{2}(?!\d)", document_id, maxsplit=1)[0]
+        compact_issuer = re.sub(r"[^a-z0-9]", "", issuer.lower())
+        if len(compact_issuer) >= 2 and compact_issuer in compact_question:
+            matches.append(document_id)
+    return documents[matches[0]] if len(matches) == 1 else entries
 
 
 async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[MemoryCitation, ...]:
@@ -223,6 +259,7 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     entries = [record for record in listed.entries if record.entry.text.strip()]
     if not entries:
         return ()
+    entries = _scope_document_pages(entries, question)
     tokenized = [Counter(re.findall(r"[a-z]+|\d+", record.entry.text.lower())) for record in entries]
     frequency = Counter(term for counts in tokenized for term in query_terms if term in counts)
     stemmed_terms = list(dict.fromkeys(map(_stem_token, query_terms)))
