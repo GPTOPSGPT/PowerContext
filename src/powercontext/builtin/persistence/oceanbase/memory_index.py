@@ -440,7 +440,10 @@ class OceanBaseMemoryVectorIndex:
         """Retrieve both ordered candidate channels through one native seekdb statement."""
         if request.embedding_profile != self.profile or request.query_vector is None:
             raise CapabilityNotSupportedError("embedding-profile")
-        if not await self.vector_complete(connection, scope_id, request.memories, self.profile):
+        # Hybrid's candidate query only needs the current head. Full vector
+        # coverage is outside this path's contract and scanning every
+        # projection here dominates repeated search latency.
+        if not await self.vector_complete(connection, scope_id, request.memories, self.profile, check_projection=False):
             raise CapabilityNotSupportedError("vector")
         tagged = request.tag_filter is not None
         sql = _OCEANBASE_HYBRID_SEARCH_SQL.format(
@@ -482,6 +485,8 @@ class OceanBaseMemoryVectorIndex:
         memories: tuple[ArtifactRef, ...],
         profile: EmbeddingProfile,
         /,
+        *,
+        check_projection: bool = True,
     ) -> bool:
         if profile != self.profile:
             return False
@@ -497,6 +502,8 @@ class OceanBaseMemoryVectorIndex:
                 # The caller validated this head before the search. If it moved while
                 # this query ran, report a stale head so the runtime can retry with it.
                 raise CapabilityNotSupportedError("head")
+            if not check_projection:
+                continue
             heads = (
                 await connection.execute(
                     select(
