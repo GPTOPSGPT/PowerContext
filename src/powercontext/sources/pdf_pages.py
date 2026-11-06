@@ -179,6 +179,23 @@ def _section_anchors(entries, requested_sections, limit: int, score) -> list[int
     return anchors
 
 
+def _topic_bonus(page_text: str, terms: list[str]) -> float:
+    bonus = 0.0
+    if ("customer" in terms or "concentration" in terms) and re.search(
+        r"(?:major|significant|largest) customers?|customer concentration|\d+% of (?:our )?revenue", page_text
+    ):
+        bonus = 16.0
+    if ("segment" in terms or "categories" in terms or ("product" in terms and "service" in terms)) and re.search(
+        r"business segments?|segment (?:data|information|results)|product (?:categories|lines)", page_text
+    ):
+        bonus = max(bonus, 14.0)
+    if any(term in terms for term in ("legal", "litigation", "lawsuits", "battles")):
+        legal_mentions = sum(page_text.count(term) for term in ("litigation", "lawsuit", "proceedings", "plaintiff"))
+        if legal_mentions >= 3:
+            bonus = max(bonus, 15.0)
+    return bonus
+
+
 def _page_bonuses(entries, tokenized, terms, distinctive, requested_sections) -> list[float]:
     salient = set(distinctive)
     query_phrases = tuple(
@@ -186,11 +203,12 @@ def _page_bonuses(entries, tokenized, terms, distinctive, requested_sections) ->
     )
     bonuses = []
     for index, record in enumerate(entries):
-        page_words = " " + " ".join(re.findall(r"[a-z]+|\d+", record.entry.text.lower())) + " "
+        page_text = record.entry.text.lower()
+        page_words = " " + " ".join(re.findall(r"[a-z]+|\d+", page_text)) + " "
         phrase_bonus = 2.0 * sum(phrase in page_words for phrase in query_phrases)
         heading_bonus = 0.0
         for heading, window in requested_sections:
-            if re.search(heading, record.entry.text[:window].lower()):
+            if re.search(heading, page_text[:window]):
                 weight = 12.0
                 if window is not None:
                     counts = tokenized[index]
@@ -202,7 +220,7 @@ def _page_bonuses(entries, tokenized, terms, distinctive, requested_sections) ->
                     ):
                         weight += 8.0
                 heading_bonus = max(heading_bonus, weight)
-        bonuses.append(phrase_bonus + heading_bonus)
+        bonuses.append(phrase_bonus + max(heading_bonus, _topic_bonus(page_text, terms)))
     return bonuses
 
 
@@ -287,11 +305,21 @@ async def search_pdf_pages(memory, question: str, limit: int = 10) -> tuple[Memo
     ]
     aliases = {
         "capex": ("capital", "expenditures"),
+        "capital": ("property", "plant", "equipment", "investments"),
+        "categories": ("segments", "products", "services"),
+        "concentration": ("customer", "significant", "revenues"),
+        "customer": ("customers", "clients", "revenues"),
+        "debt": ("borrowings", "indebtedness", "notes"),
         "ebitda": ("operating", "income", "depreciation", "amortization"),
         "geographies": ("geographic", "segments", "regions"),
+        "legal": ("litigation", "lawsuits", "proceedings", "claims"),
+        "liquidity": ("current", "assets", "liabilities", "cash"),
+        "margin": ("profit", "income"),
+        "quick": ("current", "assets", "liabilities"),
         "revenue": ("sales",),
         "restructuring": ("restructuring", "charges"),
         "sales": ("revenue",),
+        "tax": ("taxes", "provision", "income"),
     }
     query_terms = list(dict.fromkeys(term for word in distinctive for term in (word, *aliases.get(word, ()))))
     normalized = question.lower()
