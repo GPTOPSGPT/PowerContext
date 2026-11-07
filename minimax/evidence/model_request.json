@@ -1,0 +1,14 @@
+{
+  "model": "MiniMax-M2.7",
+  "stream": false,
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a careful software development assistant. Follow the current specification and tests supplied by the user."
+    },
+    {
+      "role": "user",
+      "content": "Development task: negative invoice quantity target test\nCurrent engineering sources:\n[spec] sample/spec.md sha256=0028688a35e275e0cfd947d9da7a013a378365b0831a83a0941d10a80ca47c90\n# Invoice total specification\n\n`invoice_total(unit_price, quantity)` returns the price multiplied by quantity, rounded to two decimal places.\nQuantity must be a nonnegative integer. A negative quantity must raise `ValueError`.\nExisting behavior for zero and positive quantities must remain unchanged.\n\n[code] sample/pricing.py sha256=f954405ff4284b2b65a22fcf870bdacab5df4cfef4598077b46e12c120aaed65\nfrom decimal import Decimal\n\n\ndef invoice_total(unit_price: str, quantity: int) -> Decimal:\n    return (Decimal(unit_price) * quantity).quantize(Decimal(\"0.01\"))\n\n[test] sample/test_pricing.py sha256=ee899a63e8f41789e68f1c4e670034600ca9d87069cef0436ff9f0169839d591\nimport unittest\nfrom decimal import Decimal\nfrom pricing import invoice_total\n\n\nclass InvoiceTotalTests(unittest.TestCase):\n    def test_negative_quantity_rejected(self):\n        with self.assertRaises(ValueError):\n            invoice_total(\"10.00\", -1)\n\n    def test_positive_quantity_unchanged(self):\n        self.assertEqual(invoice_total(\"3.25\", 2), Decimal(\"6.50\"))\n\n    def test_zero_quantity_unchanged(self):\n        self.assertEqual(invoice_total(\"3.25\", 0), Decimal(\"0.00\"))\n\nSaved task progress:\nTarget test failed before fix: negative quantity returned a negative total; preserve zero and positive behavior.\n\nModify only sample/pricing.py so negative quantities raise ValueError. Preserve zero and positive behavior, and do not change the tests. Return the complete replacement Python source for sample/pricing.py, inside one Python code fence, with no other files."
+    }
+  ]
+}

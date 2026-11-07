@@ -1,0 +1,9 @@
+test_negative_quantity_rejected (test_pricing.InvoiceTotalTests.test_negative_quantity_rejected) ... ok
+test_positive_quantity_unchanged (test_pricing.InvoiceTotalTests.test_positive_quantity_unchanged) ... ok
+test_zero_quantity_unchanged (test_pricing.InvoiceTotalTests.test_zero_quantity_unchanged) ... ok
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.002s
+
+OK
+exit_code=0

@@ -19,7 +19,7 @@ def main():
     p.add_argument("--context-json", type=Path, required=True,
                    help="Output of sdd_context.py context, produced from seekdb and PowerContext")
     p.add_argument("--output-dir", type=Path, required=True)
-    p.add_argument("--model", default="MiniMax-Text-01")
+    p.add_argument("--model", default="MiniMax-M2.7")
     p.add_argument("--send", action="store_true", help="Actually call MiniMax; requires user authorization")
     p.add_argument("--key-file", type=Path, help="Raw token in a file outside this repository")
     args = p.parse_args()
@@ -64,6 +64,10 @@ def main():
     except HTTPError as exc:
         # Do not echo request headers or potentially sensitive response bodies.
         raise SystemExit(f"MiniMax HTTP {exc.code}; no response artifact written") from None
+    result = json.loads(body)
+    provider_status = result.get("base_resp", {}).get("status_code")
+    if provider_status != 0:
+        raise SystemExit(f"MiniMax provider status {provider_status}; no successful response artifact written")
     (args.output_dir / "response.json").write_bytes(body)
     print(f"minimax_http_status={status}; response_sha256={hashlib.sha256(body).hexdigest()}")
 

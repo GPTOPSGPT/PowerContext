@@ -1,0 +1,18 @@
+test_negative_quantity_rejected (test_pricing.InvoiceTotalTests.test_negative_quantity_rejected) ... FAIL
+test_positive_quantity_unchanged (test_pricing.InvoiceTotalTests.test_positive_quantity_unchanged) ... ok
+test_zero_quantity_unchanged (test_pricing.InvoiceTotalTests.test_zero_quantity_unchanged) ... ok
+
+======================================================================
+FAIL: test_negative_quantity_rejected (test_pricing.InvoiceTotalTests.test_negative_quantity_rejected)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/chase/codex/OB/codex-minimax-sdd/minimax/sample/test_pricing.py", line 8, in test_negative_quantity_rejected
+    with self.assertRaises(ValueError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+----------------------------------------------------------------------
+Ran 3 tests in 0.004s
+
+FAILED (failures=1)
+exit_code=1

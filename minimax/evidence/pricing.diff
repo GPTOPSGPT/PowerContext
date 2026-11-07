@@ -1,0 +1,5 @@
+--- minimax/evidence/pricing.before.py	2026-11-06 20:39:05
++++ minimax/evidence/pricing.after.py	2026-11-06 20:39:05
+@@ -4,0 +5,2 @@
++    if quantity < 0:
++        raise ValueError("quantity must be nonnegative")

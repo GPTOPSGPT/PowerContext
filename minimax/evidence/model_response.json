@@ -1,0 +1,20 @@
+{
+  "model": "MiniMax-M2.7",
+  "base_resp": {
+    "status_code": 0,
+    "status_msg": ""
+  },
+  "usage": {
+    "total_tokens": 764,
+    "total_characters": 0,
+    "prompt_tokens": 643,
+    "completion_tokens": 121,
+    "completion_tokens_details": {
+      "reasoning_tokens": 61
+    },
+    "prompt_tokens_details": {
+      "cached_tokens": 187
+    }
+  },
+  "content": "```python\nfrom decimal import Decimal\n\n\ndef invoice_total(unit_price: str, quantity: int) -> Decimal:\n    if quantity < 0:\n        raise ValueError(\"quantity must be nonnegative\")\n    return (Decimal(unit_price) * quantity).quantize(Decimal(\"0.01\"))\n```"
+}

@@ -2,7 +2,7 @@
 
 ## Current status
 
-The integration below verifies the context module, seekdb, and PowerContext. It does **not** claim a MiniMax-assisted patch or final competition score. The same target test currently fails because the requested negative-quantity behavior has not yet been implemented.
+The integration below verifies the context module, seekdb, PowerContext, and an authorized MiniMax-assisted patch. It does not claim a platform score until the fixed submission is graded.
 
 ## Environment and source data
 
@@ -30,8 +30,16 @@ The full context output was stored on the isolated host as `/tmp/gptops-sdd-cont
 
 To test specification evolution, appended a temporary marker to the isolated remote copy of `sample/spec.md`, ran `import` and `context` again, and observed the marker in the returned specification with a new hash prefix `6e25f2c94797` (exit 0). Restored the original sample file, re-imported it, and retained the original source in the submitted worktree. This proves the current seekdb row, rather than a hard-coded local specification, supplies the context.
 
-`model_patch.py` dry run on the post-restart context exited 0 and printed `dry_run=true; no MiniMax request sent`; the generated request SHA-256 was `b298b547f45b1765cdc1a196416b749973c7b626580556c87c65a3e1d0d30b13`. It contains only the three sample sources and the saved task observation. No provider request has been made.
+`model_patch.py` dry run on the post-restart context exited 0 and printed `dry_run=true; no MiniMax request sent`; the generated request SHA-256 was `b298b547f45b1765cdc1a196416b749973c7b626580556c87c65a3e1d0d30b13`. It contains only the three sample sources and the saved task observation.
+
+## MiniMax-assisted modification
+
+The owner authorized sending only the isolated sample specification, code, and tests. The first request used the retired `MiniMax-Text-01` model and returned provider code 2069; it did not generate code. The second request used the active `MiniMax-M2.7` model, succeeded with provider status 0, and used 764 total tokens (643 prompt, 121 completion). No API key was put into the request artifact or logs. The successful request SHA-256 was `1bf4bc0d13cf3a8f0b9feb295e615f4562c3d980264f98ea74054ac91fe8c361`; response SHA-256 was `9365683979039f33044025eec45251a1ab7a68f25dcd48a531f4705368eabc44` before sanitization. Exact prompt and a sanitized model reply are in `evidence/model_request.json` and `evidence/model_response.json`.
+
+MiniMax returned a complete replacement for `sample/pricing.py`. Its only behavioral change is a negative-quantity check that raises `ValueError`. The exact before/after source and diff are in `evidence/pricing.before.py`, `pricing.after.py`, and `pricing.diff`. The unchanged target and regression tests are in `sample/test_pricing.py`.
 
 ## Before-patch tests
 
-At commit `d1c57d6b`, `/Users/chase/codex/KB/.venv/bin/python -m unittest discover -s minimax/sample -p 'test_*.py' -v` exited 1: `test_negative_quantity_rejected` failed because `ValueError` was not raised; the positive and zero regression tests passed. `python -m unittest discover -s minimax -p 'test_sdd_context.py' -v` exited 0 with one passing context test. After-patch logs and diff remain pending MiniMax-assisted modification.
+At pre-patch commit `58f2f6a5`, `/Users/chase/codex/KB/.venv/bin/python -m unittest discover -s minimax/sample -p 'test_*.py' -v` exited 1: `test_negative_quantity_rejected` failed because `ValueError` was not raised; the positive and zero regression tests passed. The same command after applying the MiniMax reply exited 0 with all three tests passing. The unchanged context-module test command `python -m unittest discover -s minimax -p 'test_sdd_context.py' -v` exited 0 with one test passing. Full outputs and exit codes are in `evidence/before_tests.log` and `evidence/after_tests.log`.
+
+After the patch, re-importing `sample/pricing.py` into seekdb and writing the successful validation observation to PowerContext exited 0. A new context run returned the updated code (`if quantity < 0:`) and two saved progress hits; both the old failure and new success are visible, preserving task history.
