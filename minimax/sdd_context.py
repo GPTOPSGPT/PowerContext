@@ -6,19 +6,19 @@ import os
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-import pymysql
-
 ROOT = Path(__file__).parent.resolve()
 SOURCES = {"spec": ROOT / "sample/spec.md", "code": ROOT / "sample/pricing.py", "test": ROOT / "sample/test_pricing.py"}
 
 
 def db():
+    import pymysql
     return pymysql.connect(host=os.environ.get("SEEKDB_HOST", "127.0.0.1"),
                            port=int(os.environ.get("SEEKDB_PORT", "2881")),
                            user=os.environ.get("SEEKDB_USER", "root"),
                            password=os.environ.get("SEEKDB_PASSWORD", ""),
                            database=os.environ.get("SEEKDB_DATABASE", "sdd_context"),
-                           charset="utf8mb4", autocommit=True)
+                           charset="utf8mb4", autocommit=True,
+                           cursorclass=pymysql.cursors.DictCursor)
 
 
 def pc(path, payload):
@@ -51,18 +51,28 @@ def import_sources(conn):
 
 
 def context(conn, task):
-    # Retrieval is executed by seekdb, with a current source digest for provenance.
+    # Sources are read from seekdb on every invocation, so a re-imported specification
+    # replaces its previous version in the next task context.
     terms = [word.lower() for word in task.split() if len(word) > 2][:12]
-    with conn.cursor(pymysql.cursors.DictCursor) as cur:
+    with conn.cursor() as cur:
         cur.execute("SELECT path,kind,sha256,content FROM sdd_sources")
         rows = cur.fetchall()
     # The query supplies the records; deterministic local ranking keeps every source type.
-    rows.sort(key=lambda row: (-sum(t in row["content"].lower() for t in terms), row["kind"], row["path"]))
+    rows = sorted(rows, key=lambda row: (-sum(t in row["content"].lower() for t in terms), row["kind"], row["path"]))
     selected = []
     for kind in ("spec", "code", "test"):
         selected.extend(row for row in rows if row["kind"] == kind)
     saved = pc("/v1/memory/search", {"scope_id": os.environ["POWERCONTEXT_SCOPE_ID"], "query": task, "limit": 5})
-    return {"task": task, "sources": selected, "saved_state": saved}
+    progress = [hit["text"] for hit in saved.get("hits", []) if isinstance(hit.get("text"), str)]
+    # This is the actual input to the coding assistant. Persisted progress is part
+    # of the input, rather than merely an unused API response in a diagnostic field.
+    assistant_context = "\n".join(
+        [f"Development task: {task}", "Current engineering sources:"]
+        + [f"[{row['kind']}] {row['path']} sha256={row['sha256']}\n{row['content']}" for row in selected]
+        + ["Saved task progress:"] + progress
+    )
+    return {"task": task, "sources": selected, "saved_progress": progress,
+            "assistant_context": assistant_context, "database_query": "SELECT path,kind,sha256,content FROM sdd_sources"}
 
 
 def main():
