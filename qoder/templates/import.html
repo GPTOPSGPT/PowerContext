@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}导入数据 - Evidence Desk{% endblock %}
+{% block content %}
+<h1>导入工作记录</h1>
+<div class="card">
+    <p style="margin-bottom:12px;">粘贴 JSON 数组（或单个对象），每条记录包含以下字段：</p>
+    <pre>{
+  "title": "记录标题",
+  "content": "正文内容",
+  "source": "来源（文件路径、URL、系统名等）",
+  "record_date": "2026-11-01",
+  "tags": "标签1,标签2"
+}</pre>
+</div>
+
+<form method="POST" action="{{ url_for('import_records') }}">
+    <label for="json_data">JSON 数据</label>
+    <textarea id="json_data" name="json_data" rows="12" placeholder='[{"title":"...","content":"...","source":"...","record_date":"2026-11-01","tags":"..."}]'></textarea>
+    <button type="submit" class="btn">导入</button>
+</form>
+
+<div class="card" style="margin-top:20px;">
+    <h2>使用 SQL 导入样例数据</h2>
+    <p style="margin-bottom:8px;">也可以通过命令行直接导入附带的样例数据：</p>
+    <pre>mysql -u evidence_desk -p evidence_desk < sample_data.sql</pre>
+</div>
+{% endblock %}

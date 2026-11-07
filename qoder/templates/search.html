@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}搜索记录 - Evidence Desk{% endblock %}
+{% block content %}
+<h1>搜索工作记录</h1>
+
+<form method="GET" action="{{ url_for('search') }}" class="search-form">
+    <div class="field">
+        <label for="q">关键词</label>
+        <input type="text" id="q" name="q" value="{{ keyword }}" placeholder="搜索标题、内容、标签...">
+    </div>
+    <div class="field">
+        <label for="date_from">起始日期</label>
+        <input type="date" id="date_from" name="date_from" value="{{ date_from }}">
+    </div>
+    <div class="field">
+        <label for="date_to">结束日期</label>
+        <input type="date" id="date_to" name="date_to" value="{{ date_to }}">
+    </div>
+    <div style="padding-bottom:10px;">
+        <button type="submit" class="btn">搜索</button>
+    </div>
+</form>
+
+{% if records %}
+<p style="margin-bottom:12px; color:#666;">找到 {{ records|length }} 条记录</p>
+
+<form method="POST" action="{{ url_for('report') }}" id="reportForm">
+    <div style="margin-bottom:12px;">
+        <button type="submit" class="btn">生成周报草稿（已选 {{ 0 }} 条）</button>
+        <input type="hidden" name="record_ids" id="selectedIds" value="">
+    </div>
+
+    {% for r in records %}
+    <div class="card">
+        <div class="checkbox-row">
+            <input type="checkbox" class="record-check" value="{{ r.id }}" style="width:auto;margin:0;">
+            <h3 style="margin:0;"><a href="{{ url_for('record_detail', record_id=r.id) }}" style="color:#2c3e50;text-decoration:none;">{{ r.title }}</a></h3>
+        </div>
+        <div class="meta">{{ r.record_date }} · ID #{{ r.id }}</div>
+        <p style="font-size:14px; margin:6px 0;">{{ r.content[:150] }}{% if r.content|length > 150 %}...{% endif %}</p>
+        <div class="source">来源：{{ r.source }}</div>
+        {% if r.tags %}
+        <div style="margin-top:6px;">
+            {% for tag in r.tags.split(',') %}
+                {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</form>
+
+<script>
+document.querySelectorAll('.record-check').forEach(cb => {
+    cb.addEventListener('change', updateSelected);
+});
+function updateSelected() {
+    const ids = [...document.querySelectorAll('.record-check:checked')].map(c => c.value);
+    document.getElementById('selectedIds').value = ids.join(',');
+    const btn = document.querySelector('#reportForm button[type=submit]');
+    btn.textContent = '生成周报草稿（已选 ' + ids.length + ' 条）';
+}
+</script>
+{% else %}
+<div class="empty">未找到匹配的记录。</div>
+{% endif %}
+{% endblock %}

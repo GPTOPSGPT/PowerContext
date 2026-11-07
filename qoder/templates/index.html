@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Evidence Desk - 首页{% endblock %}
+{% block content %}
+<h1>Evidence Desk</h1>
+<p style="color:#666; margin-bottom:20px;">团队工作记录管理与周报生成工具。导入带来源的工作记录，按关键词和日期检索，选中后一键生成带精确来源的周报草稿。</p>
+
+<div class="card">
+    <h2>快速开始</h2>
+    <ol style="padding-left:20px; margin-top:8px;">
+        <li><a href="{{ url_for('import_records') }}">导入工作记录</a>（支持 JSON 批量导入）</li>
+        <li><a href="{{ url_for('search') }}">搜索记录</a>（关键词 + 日期范围）</li>
+        <li>勾选需要的记录，点击「生成周报草稿」</li>
+    </ol>
+</div>
+
+<h2>最近记录</h2>
+{% if records %}
+    {% for r in records %}
+    <div class="card">
+        <h3><a href="{{ url_for('record_detail', record_id=r.id) }}" style="color:#2c3e50;text-decoration:none;">{{ r.title }}</a></h3>
+        <div class="meta">{{ r.record_date }} · ID #{{ r.id }}</div>
+        <div class="source">来源：{{ r.source }}</div>
+        {% if r.tags %}
+        <div style="margin-top:6px;">
+            {% for tag in r.tags.split(',') %}
+                {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="empty">暂无记录，请先<a href="{{ url_for('import_records') }}">导入数据</a>。</div>
+{% endif %}
+{% endblock %}

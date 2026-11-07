@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ record.title }} - Evidence Desk{% endblock %}
+{% block content %}
+<div style="margin-bottom:12px;"><a href="{{ url_for('search') }}" style="color:#3498db;">&larr; 返回搜索</a></div>
+
+<div class="card">
+    <h1>{{ record.title }}</h1>
+    <div class="meta">{{ record.record_date }} · ID #{{ record.id }}</div>
+
+    {% if record.tags %}
+    <div style="margin:8px 0;">
+        {% for tag in record.tags.split(',') %}
+            {% if tag.strip() %}<span class="tag">{{ tag.strip() }}</span>{% endif %}
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <h2 style="margin-top:16px;">正文</h2>
+    <p style="white-space:pre-wrap; margin-top:8px;">{{ record.content }}</p>
+
+    <h2 style="margin-top:16px;">来源</h2>
+    <p class="source" style="font-size:14px; margin-top:4px;">{{ record.source }}</p>
+</div>
+{% endblock %}

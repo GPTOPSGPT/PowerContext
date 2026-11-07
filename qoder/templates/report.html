@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}周报草稿 - Evidence Desk{% endblock %}
+{% block content %}
+<h1>周报草稿</h1>
+
+{% if records %}
+<div class="card">
+    <h2>已选记录（{{ records|length }} 条）</h2>
+    {% for r in records %}
+    <div style="padding:8px 0; border-bottom:1px solid #eee;">
+        <strong>#{{ r.id }}</strong> {{ r.title }}
+        <span style="color:#888; font-size:12px;">（{{ r.record_date }}）</span>
+        <div class="source" style="font-size:12px;">来源：{{ r.source }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="card">
+    <h2>生成的周报草稿</h2>
+    <pre>{{ draft }}</pre>
+</div>
+{% else %}
+<div class="empty">
+    <p>请选择至少一条记录来生成周报草稿。</p>
+    <p style="margin-top:8px;"><a href="{{ url_for('search') }}" class="btn">去搜索并选择记录</a></p>
+</div>
+{% endif %}
+{% endblock %}
