@@ -26,7 +26,7 @@
 2. 仍用 `demo-01`，恶作剧 `把键盘换成香蕉`。预期 `previous_prank` 为 `把闹钟藏进冰箱`，回应引用第一次的恶作剧。
 3. seekdb 执行 `SELECT id, player, prank, reaction FROM dify_prank_npc.prank_turns WHERE player='demo-01' ORDER BY id;`，应有两行。第二回合读取的内容来自第一行，而非 Dify 会话内变量。
 
-已验证 seekdb 版本 `seekdb-v1.4.0.0`。trip ECS 的桥接服务监听 `127.0.0.1:8765`，Nginx HTTPS 精确路径已启用。2026-11-07 本地及 HTTPS 各执行两轮：无令牌 `401`，有令牌 `200`，首次 `previous_prank` 为空、第二次为上一回合内容；`tianyuai.net/` 仍为 `301`，`www.tianyuai.net/` 仍为 `200`。这是后端与数据库的真实运行证据，**不等于 Dify 节点运行证据**。待补：实际 Dify 导入截图/运行日志及版本、真实 SQL 查询结果。平台评测前必须补齐。
+已验证 seekdb 版本 `seekdb-v1.4.0.0`。trip ECS 的桥接服务监听 `127.0.0.1:8765`，Nginx HTTPS 精确路径已启用。2026-11-07 本地及 HTTPS 各执行两轮：无令牌 `401`，有令牌 `200`，首次 `previous_prank` 为空、第二次为上一回合内容；`tianyuai.net/` 仍为 `301`，`www.tianyuai.net/` 仍为 `200`。数据库查询 `SELECT player, COUNT(*), MIN(id), MAX(id) ... GROUP BY player` 返回 `dify-integration-check / 2 / 1 / 2` 和 `dify-https-check / 2 / 3 / 4`，证明回合已持久化。这是后端与数据库的真实运行证据，**不等于 Dify 节点运行证据**。待补：实际 Dify 导入截图/运行日志及版本。平台评测前必须补齐。
 
 ## trip ECS 隔离部署的待批准变更
 
