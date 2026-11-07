@@ -1,6 +1,11 @@
 import unittest
+import http.client
+import os
+import threading
+from unittest.mock import patch
 
-from npc_backend import play
+from http.server import ThreadingHTTPServer
+from npc_backend import Handler, play
 
 
 class Cursor:
@@ -36,6 +41,23 @@ class Connection:
 
 
 class NpcTest(unittest.TestCase):
+    def test_http_rejects_missing_bearer_before_database_access(self):
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with patch.dict(os.environ, {"NPC_API_TOKEN": "unit-test-token"}):
+                client = http.client.HTTPConnection("127.0.0.1", server.server_port)
+                client.request("POST", "/turn", '{}', {"Content-Type": "application/json"})
+                response = client.getresponse()
+                self.assertEqual(response.status, 401)
+                response.read()
+                client.close()
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_previous_prank_is_reused(self):
         db = Connection()
         first = play(db, "p", "藏闹钟")
