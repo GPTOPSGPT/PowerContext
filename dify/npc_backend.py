@@ -5,6 +5,7 @@ Credentials are read from environment variables, never from the DSL.
 
 import json
 import os
+import hmac
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 def connect():
@@ -49,6 +50,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path != "/turn":
             self.send_error(404)
+            return
+        token = os.environ.get("NPC_API_TOKEN", "")
+        supplied = self.headers.get("Authorization", "")
+        if not token or not hmac.compare_digest(supplied, "Bearer " + token):
+            self.send_error(401)
             return
         try:
             size = int(self.headers.get("Content-Length", "0"))

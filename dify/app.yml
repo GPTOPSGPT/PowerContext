@@ -60,10 +60,12 @@ workflow:
           title: seekdb 记忆回合
           desc: 查询该玩家上一回合，生成反应并写入本回合。
           method: post
-          url: http://npc-backend:8765/turn
+          url: https://tianyuai.net/contest/dify-npc/turn
           headers: 'Content-Type: application/json'
           params: ''
-          authorization: {type: no-auth, config: null}
+          authorization:
+            type: api-key
+            config: {type: bearer, api_key: REPLACE_WITH_TOKEN}
           body:
             type: json
             data: '{"player":"{{#start.player#}}","prank":"{{#start.prank#}}"}'

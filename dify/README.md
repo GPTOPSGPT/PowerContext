@@ -15,8 +15,8 @@
 
 1. 部署 seekdb，执行 `mysql -h HOST -P PORT -u USER -p < schema.sql`。
 2. `python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt`。
-3. 配置 `SEEKDB_HOST`、`SEEKDB_PORT`、`SEEKDB_USER`、`SEEKDB_PASSWORD`。密码只放运行环境，不写入 DSL 或仓库。执行 `python npc_backend.py`。
-4. 从 Dify Studio 导入 `app.yml`。在 HTTP 节点将 `http://npc-backend:8765/turn` 换成 Dify 容器或云端可访问的地址；若用云端 Dify，必须用受控 HTTPS 地址。发布应用并运行。
+3. 配置 `SEEKDB_HOST`、`SEEKDB_PORT`、`SEEKDB_USER`、`SEEKDB_PASSWORD` 和随机生成的 `NPC_API_TOKEN`。密码和令牌只放运行环境，不写入 DSL 或仓库。执行 `python npc_backend.py`。
+4. 从 Dify Studio 导入 `app.yml`。HTTP 节点默认目标是受控 HTTPS 地址 `https://tianyuai.net/contest/dify-npc/turn`；若改用其他部署，更换此 URL。在 HTTP 节点将 `REPLACE_WITH_TOKEN` 更新为与后端一致的 Bearer 令牌，勿将填入真实令牌后的 DSL 导出到仓库。发布应用并运行。
 
 ## 验证样例
 
