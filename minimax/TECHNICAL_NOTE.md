@@ -4,6 +4,6 @@
 
 PowerContext stores task progress under an isolated Scope. `remember TEXT` writes a decision or validation observation; `context TASK` searches the Scope and includes returned text in `assistant_context`. This allows a new process to continue from saved progress. The module does not restore an entire agent session.
 
-MiniMax is reserved for the business code edit. The assistant input is the module's `assistant_context`; the target is only `sample/pricing.py`. The unchanged target and regression tests define success. No model call or code patch is claimed until an authorized MiniMax request and the corresponding prompt, response, diff, and test logs are recorded.
+MiniMax-M2.7 performed the business code edit after the owner authorized sending only this isolated sample. The assistant input was the module's `assistant_context`; the target was only `sample/pricing.py`. The model added a negative-quantity guard. The unchanged target test failed before that patch and all target and regression tests passed afterward. The exact prompt, sanitized reply, source snapshots, diff, and test logs are committed under `evidence/`.
 
 The validation uses PyMySQL 1.1.1 over seekdb's MySQL protocol and PowerContext 1.2.0 HTTP endpoints. It requires no production data. The sample's small size means all three source kinds are included; ranking within a kind is deterministic but no relevance threshold is applied. The caller must create a database and Scope and supply service locations. No credentials are stored in this repository.

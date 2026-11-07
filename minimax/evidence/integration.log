@@ -1,0 +1,28 @@
+Environment: trip Linux; seekdb 5.7.25-OceanBase seekdb-v1.4.0.0; PowerContext 1.2.0; PyMySQL 1.1.1
+COMMAND: mysql SELECT path,kind,LEFT(sha256,12),LENGTH(content) FROM sdd_sources ORDER BY kind,path
+sample/pricing.py	code	d2626a7f0952	240
+sample/spec.md	spec	0028688a35e2	301
+sample/test_pricing.py	test	ee899a63e8f4	484
+mysql_exit=0
+COMMAND: sdd_context.py remember "Integration log persisted after restart"
+response_keys ['entry', 'memory']
+remember_exit=0
+COMMAND: kill -TERM 2176927 (isolated PowerContext server)
+stop_exit=0
+COMMAND: POWERCONTEXT_HOME=/tmp/gptops-sdd-pc-home powercontext server run --host 127.0.0.1 --port 18766 --no-env-file (background)
+new_pid=2298352
+start_ssh_exit=0
+COMMAND: GET /v1/scopes after restart
+http_status=200
+ready_exit=0
+COMMAND: sdd_context.py context "negative invoice quantity target test" in new process
+source_paths ['sample/spec.md', 'sample/pricing.py', 'sample/test_pricing.py']
+saved_progress_count 2
+restart_marker_used False
+minimax_patch_used True
+context_exit=0
+COMMAND: sdd_context.py context "Integration log persisted after restart" in new process
+saved_progress_count 1
+restart_marker_used True
+minimax_patch_used True
+context_exit=0
