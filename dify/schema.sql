@@ -1,0 +1,10 @@
+CREATE DATABASE IF NOT EXISTS dify_prank_npc;
+USE dify_prank_npc;
+CREATE TABLE IF NOT EXISTS prank_turns (
+  id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  player VARCHAR(64) NOT NULL,
+  prank VARCHAR(240) NOT NULL,
+  reaction VARCHAR(512) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY prank_turns_player_id (player, id)
+);
